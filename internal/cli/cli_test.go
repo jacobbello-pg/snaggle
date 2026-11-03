@@ -15,11 +15,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/p3bot/snag/internal/testutil"
@@ -44,75 +42,25 @@ func TestMain(m *testing.M) {
 		os.Exit(ExitCodeError)
 	}
 
-	// Set up signal handling to cleanup on Ctrl+C
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		<-sigChan
-		fmt.Fprintf(os.Stderr, "\nCleaning up browsers before exit...\n")
-		cleanupOrphanedBrowsers()
-		os.Exit(ExitCodeInterrupt)
-	}()
-
-	// Clean up any orphaned Chrome instances before running tests
-	cleanupOrphanedBrowsers()
-
 	// Run tests
 	exitCode := m.Run()
 
-	// Clean up any orphaned Chrome instances after running tests
-	cleanupOrphanedBrowsers()
 	os.RemoveAll(tmp)
 
 	os.Exit(exitCode)
 }
 
-// cleanupOrphanedBrowsers kills any Chrome/Chromium instances with remote debugging
+// cleanupOrphanedBrowsers deliberately does nothing. Browser tests own and close
+// only the processes they launch; process-wide Chrome cleanup can terminate an
+// unrelated desktop or automation session.
 func cleanupOrphanedBrowsers() {
-	// Find Chrome/Chromium processes with remote-debugging-port
-	cmd := exec.Command("sh", "-c", "ps aux | grep -iE '(chrome|chromium).*--remote-debugging-port' | grep -v grep | awk '{print $2}'")
-	output, err := cmd.Output()
-	if err != nil {
-		// No processes found or command failed - that's okay
-		return
-	}
-
-	pidsStr := strings.TrimSpace(string(output))
-	if pidsStr == "" {
-		return
-	}
-
-	pids := strings.Split(pidsStr, "\n")
-	fmt.Fprintf(os.Stderr, "Cleaning up %d orphaned browser instance(s)...\n", len(pids))
-
-	for _, pid := range pids {
-		pid = strings.TrimSpace(pid)
-		if pid == "" {
-			continue
-		}
-		// Try graceful kill first
-		exec.Command("kill", pid).Run()
-	}
-
-	// Wait longer for graceful shutdown
-	exec.Command("sleep", "2").Run()
-
-	// Force kill any remaining
-	for _, pid := range pids {
-		pid = strings.TrimSpace(pid)
-		if pid == "" {
-			continue
-		}
-		exec.Command("kill", "-9", pid).Run()
-	}
-
-	// Final wait to ensure processes are fully gone
-	exec.Command("sleep", "1").Run()
 }
 
 // isBrowserAvailable checks if Chrome or Chromium is available on the system
 func isBrowserAvailable() bool {
+	if os.Getenv("SNAG_LEGACY_BROWSER_TESTS") != "1" {
+		return false
+	}
 	browsers := []string{
 		"google-chrome",
 		"chromium",
@@ -669,28 +617,25 @@ func TestCLI_InvalidPort(t *testing.T) {
 	}
 }
 
-// TestCLI_FormatOptions tests valid format values are accepted
+// TestCLI_FormatOptions checks formats without launching Chrome.
 func TestCLI_FormatOptions(t *testing.T) {
-	// Note: These will fail to actually fetch without a browser,
-	// but should pass format validation
-	// Test with user-facing format names (aliases that will be normalized)
-	tests := []string{"markdown", "md", "html", "text", "txt", "pdf", "png"}
+	tests := []struct {
+		name    string
+		allowed bool
+	}{
+		{"markdown", true}, {"md", true}, {"html", true},
+		{"text", true}, {"txt", true}, {"pdf", false}, {"png", false},
+	}
 
-	for _, format := range tests {
-		t.Run(format, func(t *testing.T) {
-			// We can't actually test fetching without a browser,
-			// but we can verify the format is accepted by checking
-			// the error message doesn't mention invalid format
-			stdout, stderr, err := runSnagLaunch("--format", format, "--force-headless", "https://example.com")
-
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stdout, stderr, err := runSnag("--format", tt.name, "http://127.0.0.1")
+			assertError(t, err)
 			output := stdout + stderr
-
-			// If there's an error, it should NOT be about invalid format
-			if err != nil {
-				if strings.Contains(output, "Invalid format") || strings.Contains(output, "invalid format") {
-					t.Errorf("format %q should be valid but got format error: %s", format, output)
-				}
-				// Other errors (like browser not found) are acceptable for this test
+			if tt.allowed {
+				assertContains(t, output, "non-public")
+			} else {
+				assertContains(t, output, "disabled")
 			}
 		})
 	}
@@ -705,8 +650,7 @@ func TestCLI_ListTabsNoBrowser(t *testing.T) {
 	assertExitCode(t, err, 1)
 
 	output := stdout + stderr
-	// Should contain error message about no browser running
-	assertContains(t, output, "No browser")
+	assertContains(t, output, "--list-tabs is disabled")
 }
 
 // TestCLI_OutputFilePermission tests output to unwritable location
@@ -1553,8 +1497,7 @@ func TestCLI_TabNoBrowser(t *testing.T) {
 	assertError(t, err)
 	assertExitCode(t, err, 1)
 
-	// Error should be helpful
-	assertContains(t, stderr, "No browser found")
+	assertContains(t, stderr, "--tab is disabled")
 
 	_ = stdout
 }
@@ -1567,8 +1510,7 @@ func TestCLI_TabWithURL(t *testing.T) {
 	assertError(t, err)
 	assertExitCode(t, err, 1)
 
-	// Error should explain the conflict
-	assertContains(t, stderr, "Cannot use both --tab and URL arguments")
+	assertContains(t, stderr, "--tab is disabled")
 
 	_ = stdout
 }
@@ -1929,23 +1871,9 @@ func TestBrowser_OutputDirPDF(t *testing.T) {
 
 // TestCLI_MultipleURLs_FlagOrder tests that Cobra allows flags anywhere (improved UX)
 func TestCLI_MultipleURLs_FlagOrder(t *testing.T) {
-	tmpDir := t.TempDir()
-	stdout, stderr, err := runSnagLaunch("https://example.com", "--force-headless", "-d", tmpDir)
-
-	// Cobra allows flags anywhere (more flexible than urfave/cli)
-	// This should now succeed instead of failing
-	assertNoError(t, err)
-
-	assertContains(t, stderr, "Saved to")
-	files, readErr := os.ReadDir(tmpDir)
-	if readErr != nil {
-		t.Fatalf("failed to read temp directory: %v", readErr)
-	}
-	if len(files) != 1 {
-		t.Fatalf("expected 1 file in output directory, got %d", len(files))
-	}
-
-	_ = stdout
+	stdout, stderr, err := runSnag("https://example.com", "-d", t.TempDir())
+	assertError(t, err)
+	assertContains(t, stdout+stderr, "--output-dir is disabled")
 }
 
 // TestCLI_MultipleURLs_WithOutput tests error when using --output with multiple URLs
@@ -1957,25 +1885,16 @@ func TestCLI_MultipleURLs_WithOutput(t *testing.T) {
 	assertExitCode(t, err, 1)
 
 	output := stdout + stderr
-	assertContains(t, output, "Cannot use --output with multiple")
-	assertContains(t, output, "--output-dir")
+	assertContains(t, output, "--output is disabled")
 
 	_ = stdout
 }
 
 // TestCLI_MultipleURLs_WithCloseTab tests --close-tab works with multiple URLs
 func TestCLI_MultipleURLs_WithCloseTab(t *testing.T) {
-	tmpDir := t.TempDir()
-	stdout, stderr, err := runSnagLaunch("--verbose", "--force-headless", "--close-tab", "-d", tmpDir, "https://example.com", "https://go.dev")
-
-	// Should succeed - --close-tab is now supported with multiple URLs
-	assertNoError(t, err)
-
-	output := stdout + stderr
-	assertContains(t, output, "Processing 2 URLs")
-	assertContains(t, output, "Batch complete")
-
-	_ = stdout
+	stdout, stderr, err := runSnag("--close-tab", "https://example.com", "https://go.dev")
+	assertError(t, err)
+	assertContains(t, stdout+stderr, "exactly one URL")
 }
 
 // TestCLI_MultipleURLs_WithTab tests error when using --tab with URL arguments
@@ -1987,7 +1906,7 @@ func TestCLI_MultipleURLs_WithTab(t *testing.T) {
 	assertExitCode(t, err, 1)
 
 	output := stdout + stderr
-	assertContains(t, output, "Cannot use both --tab and URL arguments")
+	assertContains(t, output, "--tab is disabled")
 
 	_ = stdout
 }
@@ -2001,7 +1920,7 @@ func TestCLI_MultipleURLs_WithAllTabs(t *testing.T) {
 	assertExitCode(t, err, 1)
 
 	output := stdout + stderr
-	assertContains(t, output, "Cannot use both --all-tabs and URL arguments")
+	assertContains(t, output, "--all-tabs is disabled")
 
 	_ = stdout
 }
@@ -2010,17 +1929,9 @@ func TestCLI_MultipleURLs_WithAllTabs(t *testing.T) {
 func TestCLI_MultipleURLs_WithListTabs(t *testing.T) {
 	stdout, stderr, err := runSnag("--list-tabs", "https://example.com")
 
-	// Should succeed - --list-tabs overrides URL arguments, but may fail if no browser running
-	// Either succeeds with tab list, or fails with "no browser instance running"
 	output := stdout + stderr
-
-	// Accept either outcome since test environment may not have browser running
-	if err != nil {
-		assertContains(t, output, "no browser instance running")
-	} else {
-		// If browser is running, should list tabs (URL is ignored)
-		assertContains(t, output, "Available tabs")
-	}
+	assertError(t, err)
+	assertContains(t, output, "--list-tabs is disabled")
 
 	_ = stdout
 }
@@ -2034,7 +1945,7 @@ func TestCLI_URLFile_NotFound(t *testing.T) {
 	assertExitCode(t, err, 1)
 
 	output := stdout + stderr
-	assertContains(t, output, "Failed to open URL file")
+	assertContains(t, output, "--url-file is disabled")
 
 	_ = stdout
 }
@@ -2056,7 +1967,7 @@ func TestCLI_URLFile_Empty(t *testing.T) {
 	assertExitCode(t, err, 1)
 
 	output := stdout + stderr
-	assertContains(t, output, "no valid URLs")
+	assertContains(t, output, "--url-file is disabled")
 
 	_ = stdout
 }
@@ -2084,7 +1995,7 @@ func TestCLI_URLFile_OnlyComments(t *testing.T) {
 	assertExitCode(t, err, 1)
 
 	output := stdout + stderr
-	assertContains(t, output, "no valid URLs")
+	assertContains(t, output, "--url-file is disabled")
 
 	_ = stdout
 }
@@ -2392,11 +2303,11 @@ func TestBrowser_URLFile_InvalidURLs_RealWorld(t *testing.T) {
 	_ = err // May succeed or fail depending on network
 }
 
-func TestCLI_HelpDocumentsTempProfile(t *testing.T) {
+func TestCLI_HelpDocumentsEphemeralProfile(t *testing.T) {
 	stdout, stderr, _ := runSnag("--help")
 	output := stdout + stderr
-	assertContains(t, output, "--temp-profile")
-	assertContains(t, output, "--user-data-dir")
+	assertContains(t, output, "ephemeral profile")
+	assertNotContains(t, output, "--user-data-dir DIRECTORY")
 }
 
 func TestCLI_TempProfileUserDataDirMutex(t *testing.T) {
@@ -2410,19 +2321,14 @@ func TestCLI_TempProfileUserDataDirMutex(t *testing.T) {
 
 func TestCLI_DoctorTempProfile(t *testing.T) {
 	stdout, stderr, err := runSnag("--doctor", "--temp-profile")
-	assertNoError(t, err)
-	assertExitCode(t, err, 0)
-	assertContains(t, stdout, "snag Launch Profile")
-	assertContains(t, stdout, "ephemeral (--temp-profile)")
-	_ = stderr
+	assertError(t, err)
+	assertContains(t, stdout+stderr, "--doctor is disabled")
 }
 
 func TestCLI_DoctorUserDataDirFile(t *testing.T) {
 	stdout, stderr, err := runSnag("--doctor", "--user-data-dir", "/etc/hosts")
-	assertNoError(t, err)
-	assertExitCode(t, err, 0)
-	assertContains(t, stdout, "/etc/hosts")
-	assertContains(t, stdout, "✗")
+	assertError(t, err)
+	assertContains(t, stdout+stderr, "--doctor is disabled")
 	info, statErr := os.Stat("/etc/hosts")
 	if statErr != nil {
 		t.Fatal(statErr)
@@ -2437,10 +2343,8 @@ func TestCLI_DoctorDoesNotCreateDefaultProfile(t *testing.T) {
 	home := t.TempDir()
 	env := testEnv(map[string]string{"HOME": home}, "XDG_STATE_HOME")
 	stdout, stderr, err := runSnagCmd(env, "--doctor")
-	assertNoError(t, err)
-	assertExitCode(t, err, 0)
-	assertContains(t, stdout, "snag Launch Profile")
-	assertContains(t, stdout, "snag/chrome")
+	assertError(t, err)
+	assertContains(t, stdout+stderr, "--doctor is disabled")
 
 	profile := filepath.Join(home, ".local", "state", "snag", "chrome")
 	if runtime.GOOS == "darwin" {

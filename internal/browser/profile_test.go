@@ -159,14 +159,14 @@ func TestResolveLaunchProfile_DefaultDoesNotCreate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Ephemeral {
-		t.Error("default profile is not ephemeral")
+	if !got.Ephemeral {
+		t.Error("default profile must be ephemeral")
 	}
 	if got.Exists {
-		t.Error("uncreated default profile should not exist")
+		t.Error("ephemeral profile should not report persistent state")
 	}
-	if _, err := os.Stat(got.Path); !os.IsNotExist(err) {
-		t.Fatalf("ResolveLaunchProfile must not create %s", got.Path)
+	if got.Path != "" {
+		t.Fatalf("ephemeral profile path = %q, want empty", got.Path)
 	}
 }
 
@@ -217,33 +217,33 @@ func TestApplyLaunchProfile_TempLeavesRodDir(t *testing.T) {
 	}
 }
 
-func TestApplyLaunchProfile_DefaultCreatesUnderHome(t *testing.T) {
+func TestApplyLaunchProfile_DefaultUsesRodTempDir(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "state"))
 
-	want, err := DefaultLaunchProfile()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	bm := &BrowserManager{}
-	l, err := bm.applyLaunchProfile(launcher.New())
+	base := launcher.New()
+	want := base.Get(flags.UserDataDir)
+	l, err := bm.applyLaunchProfile(base)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bm.userDataDir != want {
-		t.Errorf("manager userDataDir = %q, want %q", bm.userDataDir, want)
+	if !bm.tempProfile {
+		t.Error("default launch must become ephemeral")
+	}
+	if bm.userDataDir != "" {
+		t.Errorf("manager userDataDir = %q, want empty", bm.userDataDir)
 	}
 	if got := l.Get(flags.UserDataDir); got != want {
 		t.Errorf("launcher user-data-dir = %q, want %q", got, want)
 	}
-	info, err := os.Stat(want)
+	persistent, err := DefaultLaunchProfile()
 	if err != nil {
-		t.Fatalf("default profile should be created: %v", err)
+		t.Fatal(err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o700 {
-		t.Errorf("default profile mode = %04o, want 0700", perm)
+	if _, err := os.Stat(persistent); !os.IsNotExist(err) {
+		t.Fatalf("default launch created persistent profile %s", persistent)
 	}
 }
 

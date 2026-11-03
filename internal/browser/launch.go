@@ -117,9 +117,18 @@ func (bm *BrowserManager) launchBrowser(ctx context.Context, headless bool) (*ro
 		return nil, err
 	}
 
+	proxy, err := startEgressProxy()
+	if err != nil {
+		return nil, err
+	}
+	bm.egressProxy = proxy
+
 	l := withSecureLaunchFlags(launcher.New().Context(ctx).
 		Bin(path).
-		Leakless(headless), headless)
+		Leakless(headless), headless).
+		Set("proxy-server", proxy.address()).
+		Set("proxy-bypass-list", "<-loopback>").
+		Set("disable-quic")
 
 	if bm.userAgent != "" {
 		l = l.Set("user-agent", bm.userAgent)
@@ -128,6 +137,8 @@ func (bm *BrowserManager) launchBrowser(ctx context.Context, headless bool) (*ro
 
 	l, err = bm.applyLaunchProfile(l)
 	if err != nil {
+		proxy.Close()
+		bm.egressProxy = nil
 		return nil, err
 	}
 
@@ -135,6 +146,8 @@ func (bm *BrowserManager) launchBrowser(ctx context.Context, headless bool) (*ro
 
 	controlURL, err := l.Launch()
 	if err != nil {
+		proxy.Close()
+		bm.egressProxy = nil
 		return nil, bm.wrapLaunchError(err)
 	}
 	logger.Debug("Browser launched with control URL: %s", controlURL)
@@ -149,6 +162,8 @@ func (bm *BrowserManager) launchBrowser(ctx context.Context, headless bool) (*ro
 		// Close() does not kill a visible browser, so a failed start must
 		// tear down here (interrupt and CDP failure both land on this path).
 		bm.abandonLauncher(l)
+		proxy.Close()
+		bm.egressProxy = nil
 		bm.launcher = nil
 		bm.wasLaunched = false
 		bm.launchedHeadless = false
@@ -323,10 +338,7 @@ func (bm *BrowserManager) NewPage() (*Page, error) {
 	}
 
 	securePage := wrapPage(page)
-	if err := securePage.RestrictNetwork(); err != nil {
-		_ = securePage.Close()
-		return nil, err
-	}
+	securePage.proxy = bm.egressProxy
 	return securePage, nil
 }
 
@@ -349,6 +361,7 @@ func connectRod(ctx context.Context, controlURL string) (*rod.Browser, error) {
 func withSecureLaunchFlags(l *launcher.Launcher, headless bool) *launcher.Launcher {
 	l = l.NoSandbox(false).
 		Set("remote-debugging-address", "127.0.0.1").
+		Set("disable-crash-reporter").
 		Set("disable-features", "TranslateUI").
 		Delete("disable-site-isolation-trials")
 	if headless {

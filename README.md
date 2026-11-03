@@ -14,6 +14,8 @@ The binary is deliberately narrower than upstream:
 - one public HTTP(S) URL per invocation;
 - DNS and every browser request are checked against local, private, link-local,
   shared, and multicast address space;
+- a loopback egress proxy dials verified IPs directly and blocks browser-vendor
+  background hosts unless that domain is the explicit page target;
 - Chromium runs headless with an ephemeral profile, sandbox, site isolation,
   automation disclosure, random loopback-only CDP port, and no profile reuse;
 - output is stdout-only and limited to 8 MiB;
@@ -49,18 +51,20 @@ Do not include credentials, tokens, or sensitive query parameters in URLs.
 Safe checks that do not launch Chrome:
 
 ```sh
-go test -run '^$' ./...
-go test ./internal/netpolicy ./internal/validate ./internal/format \
-  ./internal/output ./internal/skill ./internal/logger
+go test ./...
 go vet ./...
 go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 ```
 
-The complete upstream test suite includes real-browser integration tests. Run
-it only in an isolated account or VM with no active Chrome profile:
+Browser integration is opt-in. It uses headless Chrome, a disposable profile,
+a random loopback CDP port, and a loopback egress proxy. Do not enable the
+legacy upstream browser tests.
 
 ```sh
-go test -v ./...
+SNAG_BROWSER_INTEGRATION=1 go test -v ./internal/browser \
+  -run '^TestSecureBrowserIntegration$' -timeout 60s
+SNAG_BROWSER_INTEGRATION=1 go test -v ./internal/cli \
+  -run '^TestSecureCLIChromeIntegration$' -timeout 60s
 ```
 
 ## Upstream
