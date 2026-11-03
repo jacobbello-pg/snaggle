@@ -27,15 +27,13 @@ Use Go 1.27.3 or newer. Add MPL-2.0 headers to new Go files.
 Safe checks:
 
 ```sh
-go test -run '^$' ./...
-go test ./internal/netpolicy ./internal/validate ./internal/format \
-  ./internal/output ./internal/skill ./internal/logger
+go test ./...
 go vet ./...
 go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 ```
 
-`go test ./...` launches real Chrome. Run it only in an isolated account or VM
-without an active Chrome profile.
+Chrome tests are opt-in with `SNAG_BROWSER_INTEGRATION=1` and exact `-run`
+filters documented in README. Never enable `SNAG_LEGACY_BROWSER_TESTS`.
 
 Use feature branches and conventional commits. Review upstream changes before
 merging them into this repository.

@@ -10,18 +10,16 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net"
 	"time"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
-	"github.com/p3bot/snag/internal/netpolicy"
 )
 
 // Page wraps a Rod page so CLI and domain packages do not import Rod.
 type Page struct {
 	rodPage *rod.Page
-	router  *rod.HijackRouter
+	proxy   *egressProxy
 }
 
 // PageMeta is the title and URL of a loaded page.
@@ -59,39 +57,15 @@ func (p *Page) Close() error {
 	if p == nil || p.rodPage == nil {
 		return nil
 	}
-	if p.router != nil {
-		_ = p.router.Stop()
-	}
 	return p.rodPage.Context(context.Background()).Close()
-}
-
-// RestrictNetwork blocks every page request unless DNS resolves exclusively to
-// public address space. This also covers redirects and page subresources.
-func (p *Page) RestrictNetwork() error {
-	if p == nil || p.rodPage == nil {
-		return fmt.Errorf("page is nil")
-	}
-	router := p.rodPage.HijackRequests()
-	if err := router.Add("*", "", func(h *rod.Hijack) {
-		ctx, cancel := context.WithTimeout(h.Request.Req().Context(), 3*time.Second)
-		defer cancel()
-		if err := netpolicy.CheckURL(ctx, net.DefaultResolver, h.Request.URL().String()); err != nil {
-			h.Response.Fail(proto.NetworkErrorReasonBlockedByClient)
-			return
-		}
-		h.ContinueRequest(&proto.FetchContinueRequest{})
-	}); err != nil {
-		_ = router.Stop()
-		return fmt.Errorf("enable network policy: %w", err)
-	}
-	p.router = router
-	go router.Run()
-	return nil
 }
 
 func (p *Page) NavigateTimeout(url string, timeout time.Duration) error {
 	if p == nil || p.rodPage == nil {
 		return fmt.Errorf("page is nil")
+	}
+	if p.proxy != nil {
+		p.proxy.setPrimaryURL(url)
 	}
 	return p.rodPage.Timeout(timeout).Navigate(url)
 }

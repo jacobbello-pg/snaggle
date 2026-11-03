@@ -1,6 +1,7 @@
 name: Security
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -19,18 +20,27 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Compile every package without browser tests
-        run: go test -run '^$' ./...
-      - name: Run browser-free unit tests
-        run: >-
-          go test
-          ./internal/netpolicy
-          ./internal/validate
-          ./internal/format
-          ./internal/output
-          ./internal/skill
-          ./internal/logger
+      - name: Run browser-free test suite
+        run: go test ./...
       - name: Vet
         run: go vet ./...
       - name: Vulnerability scan
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  chrome-integration:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify isolated browser policy
+        run: >-
+          SNAG_BROWSER_INTEGRATION=1 go test -v ./internal/browser
+          -run '^TestSecureBrowserIntegration$' -timeout 60s
+      - name: Verify end-to-end CLI rendering
+        run: >-
+          SNAG_BROWSER_INTEGRATION=1 go test -v ./internal/cli
+          -run '^TestSecureCLIChromeIntegration$' -timeout 60s
