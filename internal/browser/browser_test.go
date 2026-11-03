@@ -203,35 +203,11 @@ func TestDetectBrowserName_FallbackBehavior(t *testing.T) {
 	}
 }
 
-// TestKillBrowserOnPortNotFound tests killing when no browser on port.
-func TestKillBrowserOnPortNotFound(t *testing.T) {
-	port := 9999 // Use unlikely port
-	bm := NewBrowserManager(BrowserOptions{Port: port})
-
-	count, err := bm.KillBrowser(port)
-	if err != nil {
-		t.Fatalf("KillBrowser should not error when no browser found: %v", err)
-	}
-
-	if count != 0 {
-		t.Errorf("Expected to kill 0 processes, got %d", count)
-	}
-}
-
-// TestKillAllBrowsersNoneFound tests killing all when no browsers running.
-func TestKillAllBrowsersNoneFound(t *testing.T) {
-	// Try to kill when no browsers with remote debugging are running
+func TestKillBrowserDisabled(t *testing.T) {
 	bm := NewBrowserManager(BrowserOptions{})
-	count, err := bm.KillBrowser(0)
-
-	// Should not error
-	if err != nil {
-		t.Fatalf("KillBrowser should not error when no browsers found: %v", err)
-	}
-
-	// Count should be 0 or more (depending on if any debug browsers are running)
-	if count < 0 {
-		t.Errorf("Expected non-negative count, got %d", count)
+	count, err := bm.KillBrowser(9222)
+	if err == nil || count != 0 {
+		t.Fatalf("KillBrowser() = %d, %v; want 0 and an error", count, err)
 	}
 }
 
@@ -525,10 +501,10 @@ func TestUACHPlatform(t *testing.T) {
 	}
 }
 
-func TestWithRealUserLaunchFlags_Headless(t *testing.T) {
-	args := strings.Join(withRealUserLaunchFlags(launcher.New(), true).FormatArgs(), " ")
-	if strings.Contains(args, "--enable-automation") {
-		t.Fatalf("headless launch still passes --enable-automation: %s", args)
+func TestWithSecureLaunchFlags_Headless(t *testing.T) {
+	args := strings.Join(withSecureLaunchFlags(launcher.New(), true).FormatArgs(), " ")
+	if !strings.Contains(args, "--enable-automation") {
+		t.Fatalf("headless launch must disclose automation: %s", args)
 	}
 	if !strings.Contains(args, "--headless=new") {
 		t.Fatalf("headless launch missing --headless=new: %s", args)
@@ -542,15 +518,18 @@ func TestWithRealUserLaunchFlags_Headless(t *testing.T) {
 	if !strings.Contains(args, "--screen-info={1920x1080}") {
 		t.Fatalf("headless launch missing virtual screen: %s", args)
 	}
-	if !strings.Contains(args, "--disable-blink-features=AutomationControlled") {
-		t.Fatalf("headless launch missing AutomationControlled: %s", args)
+	if strings.Contains(args, "--no-sandbox") || strings.Contains(args, "site-per-process") {
+		t.Fatalf("headless launch weakens browser isolation: %s", args)
+	}
+	if !strings.Contains(args, "--remote-debugging-address=127.0.0.1") {
+		t.Fatalf("headless launch must bind CDP to loopback: %s", args)
 	}
 }
 
-func TestWithRealUserLaunchFlags_Visible(t *testing.T) {
-	args := strings.Join(withRealUserLaunchFlags(launcher.New(), false).FormatArgs(), " ")
-	if strings.Contains(args, "--enable-automation") {
-		t.Fatalf("visible launch still passes --enable-automation: %s", args)
+func TestWithSecureLaunchFlags_Visible(t *testing.T) {
+	args := strings.Join(withSecureLaunchFlags(launcher.New(), false).FormatArgs(), " ")
+	if !strings.Contains(args, "--enable-automation") {
+		t.Fatalf("visible launch must disclose automation: %s", args)
 	}
 	if strings.Contains(args, "--headless") {
 		t.Fatalf("visible launch should not be headless: %s", args)
@@ -561,8 +540,8 @@ func TestWithRealUserLaunchFlags_Visible(t *testing.T) {
 	if strings.Contains(args, "--screen-info=") {
 		t.Fatalf("visible launch should not force virtual screen: %s", args)
 	}
-	if !strings.Contains(args, "--disable-blink-features=AutomationControlled") {
-		t.Fatalf("visible launch missing AutomationControlled: %s", args)
+	if strings.Contains(args, "--no-sandbox") || strings.Contains(args, "site-per-process") {
+		t.Fatalf("visible launch weakens browser isolation: %s", args)
 	}
 }
 

@@ -67,149 +67,70 @@ func (c *Config) BrowserOptions() browser.BrowserOptions {
 // browserOptionsFromFlags validates profile and user-agent flags, then builds
 // launch options through Config.BrowserOptions so every start path shares one mapping.
 func browserOptionsFromFlags(cmd *cobra.Command, openBrowser, forceHeadless bool) (browser.BrowserOptions, error) {
-	validatedUserDataDir := ""
-	if !tempProfile && cmd.Flags().Changed("user-data-dir") {
-		validatedDir, err := validate.UserDataDir(userDataDir)
-		if err != nil {
-			return browser.BrowserOptions{}, err
-		}
-		validatedUserDataDir = validatedDir
-	}
-
 	cfg := &Config{
 		Port:          port,
-		ForceHeadless: forceHeadless,
-		OpenBrowser:   openBrowser,
-		UserAgent:     validate.UserAgent(userAgent, cmd.Flags().Changed("user-agent")),
-		UserDataDir:   validatedUserDataDir,
-		TempProfile:   tempProfile,
+		ForceHeadless: true,
+		OpenBrowser:   false,
+		TempProfile:   true,
 	}
 	return cfg.BrowserOptions(), nil
 }
 
 var (
-	urlFile        string
-	flagOutput     string
-	outputDir      string
-	flagFormat     string
-	timeout        int
-	waitFor        string
-	port           int
-	closeTab       bool
-	forceHead      bool
-	openBrowser    bool
-	listTabs       bool
-	tab            string
-	allTabs        bool
-	killBrowser    bool
-	runDoctor      bool
-	showVersion    bool
-	info           bool
-	verbose        bool
-	debug          bool
-	colorMode      string
-	userAgent      string
-	userDataDir    string
-	tempProfile    bool
-	skillPrint     bool
-	skillInstall   []string
-	skillList      bool
-	skillUninstall []string
-	skillLocal     bool
+	urlFile     string
+	flagOutput  string
+	outputDir   string
+	flagFormat  string
+	timeout     int
+	waitFor     string
+	port        int
+	closeTab    bool
+	forceHead   bool
+	openBrowser bool
+	listTabs    bool
+	tab         string
+	allTabs     bool
+	killBrowser bool
+	runDoctor   bool
+	showVersion bool
+	info        bool
+	verbose     bool
+	debug       bool
+	colorMode   string
+	userAgent   string
+	userDataDir string
+	tempProfile bool
+	skillPrint  bool
 )
 
 var helpTemplate = fmt.Sprintf(`USAGE:
-  snag [options] URL...
+  snag [options] URL
 
 DESCRIPTION:
-  snag fetches web page content using Chromium/Chrome automation.
-  It can connect to existing browser sessions, launch headless browsers, or open
-  visible browsers for authenticated sessions.
-
-  Output formats:  Markdown (md), HTML, text (txt), PDF, or PNG.
-  Filename format: yyyy-mm-dd-hhmmss-<title>-<n>.<ext>
-
-  The perfect companion for AI agents to gain context from web pages.
+  Secondary, security-scoped Chromium renderer for one public HTTP(S) page.
+  Uses a sandboxed headless browser, ephemeral profile, public-network policy,
+  random loopback CDP port, stdout-only output, and an 8 MiB content limit.
 
 EXAMPLES:
-  # Fetch a single page (Markdown to stdout)
-  snag example.com
-  snag https://github.com/p3bot/snag
-
-  # Different output formats
-  snag -f html example.com
-  snag -f text example.com > page.txt
-  snag -f pdf -o doc.pdf example.com
-
-  # Get page metadata as JSON
-  snag --info example.com
-  snag -i -t 1                         # Info from existing tab
-
-  # Save to file
-  snag -o page.md example.com
-  snag -d output/ example.com          # Auto-generated filename
-
-  # Fetch multiple pages
-  snag example.com github.com          # Auto-generated filenames to pwd
-  snag -d output/ url1 url2 url3
-  snag --url-file urls.txt -d ./pages/
-  cat urls.txt | snag --url-file -     # Read from stdin
-  echo "example.com" | snag --url-file -
-
-  # Work with browser tabs (index and listed in alphabetical order)
-  snag --list-tabs                     # List all open tabs
-  snag -t 1                            # Fetch first tab
-  snag -t "github"                     # Match tab by URL pattern
-  snag -t 2-5 -d tabs/                 # Fetch tabs 2 through 5
-  snag --all-tabs -d output/           # Fetch all open tabs
-
-  # Authenticated sessions (persistent snag profile; extra instances need --temp-profile)
-  snag --open-browser                  # Login, then quit or leave open
-  snag example.com                     # Same profile after quit; CDP attach if left open
-  snag --temp-profile example.com      # Isolated ephemeral launch
-
-  # Advanced options
-  snag --wait-for ".content" example.com
-  snag --timeout 60 slow-site.com
-  snag --user-agent "Bot/1.0" example.com
+  snag https://example.com
+  snag --format html https://example.com
+  snag --format text --timeout 30 https://example.com
+  snag --wait-for ".content" https://example.com
 
 OPTIONS:
-  -l, --list-tabs              List all open tabs in the browser
-  -t, --tab int|string         Fetch from existing tab by pattern (tab number or string)
-  -a, --all-tabs               Process all open browser tabs (saves with auto-generated filenames)
-      --url-file string        Read URLs from file or stdin with "-" (one per line, supports comments)
+  -f, --format string          Output: md | html | text (default md)
+  -i, --info                   Output page metadata as JSON
+      --timeout int            Timeout in seconds, 1-60 (default %d)
+  -w, --wait-for string        Wait for a CSS selector
+      --skill                  Print the fallback-only agent skill
+      --color string           stderr colour: auto | always | never
+      --debug                  Enable debug diagnostics
+      --verbose                Enable verbose diagnostics
+  -h, --help                   Help
+  -v, --version                Version
 
-  -f, --format string          Output format: md | html | text | pdf | png (default md)
-  -i, --info                   Output page metadata as JSON (title, URL, domain, slug, timestamp)
-  -o, --output string          Save output to file instead of stdout
-  -d, --output-dir string      Save files with auto-generated names to directory
-
-  -b, --open-browser           Open browser visibly with remote debugging enabled (no URL required)
-  -c, --close-tab              Close the browser tab after fetching content
-      --force-headless         Force headless mode even if the browser is running
-  -p, --port int               Chromium/Chrome remote debugging port (default 9222)
-      --user-agent string      Override the browser user agent
-      --user-data-dir string   Chromium user data directory (overrides the persistent snag profile)
-      --temp-profile           Ephemeral profile for this launch (mutually exclusive with --user-data-dir)
-
-      --timeout int            Page load timeout in seconds (default %d)
-  -w, --wait-for string        Wait for CSS selector before extracting content
-
-      --doctor                 Display comprehensive diagnostic information
-  -k, --kill-browser           Kill browser processes with remote debugging enabled
-
-      --skill                  Print the embedded agent skill contract
-      --skill-install[=id]     Install the snag skill (repeat --skill-install=id for named agents)
-      --skill-list             List installed snag skill copies
-      --skill-uninstall[=id]   Remove installed snag skill copies
-      --local                  Use project-local skills directories (with skill install/list/uninstall)
-
-      --color string           Colour stderr diagnostics: auto | always | never (default auto)
-      --debug                  Enable debug output
-      --verbose                Enable verbose logging output (connection, fetch, and batch progress)
-
-  -h, --help                   help for snag
-  -v, --version                version for snag
+Other upstream options are retained only for argument compatibility and fail
+closed in this secure build.
 `, DefaultTimeout)
 
 var rootCmd = &cobra.Command{
@@ -233,7 +154,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&tempProfile, "temp-profile", false, "Ephemeral profile for this launch (mutually exclusive with --user-data-dir)")
 
 	rootCmd.Flags().IntVar(&timeout, "timeout", DefaultTimeout, "Page load timeout in seconds")
-	rootCmd.Flags().IntVarP(&port, "port", "p", 9222, "Chromium/Chrome remote debugging port")
+	rootCmd.Flags().IntVarP(&port, "port", "p", 0, "Chromium/Chrome remote debugging port (disabled in secure mode)")
 
 	rootCmd.Flags().BoolVarP(&closeTab, "close-tab", "c", false, "Close the browser tab after fetching content")
 	rootCmd.Flags().BoolVar(&forceHead, "force-headless", false, "Force headless mode even if the browser is running")
@@ -249,15 +170,8 @@ func init() {
 	rootCmd.Flags().StringVar(&colorMode, "color", logger.ColorAuto, "Colour stderr diagnostics: auto | always | never")
 
 	rootCmd.Flags().BoolVar(&skillPrint, "skill", false, "Print the embedded agent skill contract")
-	rootCmd.Flags().StringArrayVar(&skillInstall, "skill-install", nil, "Install the snag skill (optional =id, repeatable)")
-	rootCmd.Flags().Lookup("skill-install").NoOptDefVal = skillBareSentinel
-	rootCmd.Flags().BoolVar(&skillList, "skill-list", false, "List installed snag skill copies")
-	rootCmd.Flags().StringArrayVar(&skillUninstall, "skill-uninstall", nil, "Remove installed snag skill copies (optional =id, repeatable)")
-	rootCmd.Flags().Lookup("skill-uninstall").NoOptDefVal = skillBareSentinel
-	rootCmd.Flags().BoolVar(&skillLocal, "local", false, "Use project-local skills directories (with skill install/list/uninstall)")
 
 	rootCmd.MarkFlagsMutuallyExclusive("verbose", "debug")
-	rootCmd.MarkFlagsMutuallyExclusive("skill", "skill-install", "skill-list", "skill-uninstall")
 	rootCmd.MarkFlagsMutuallyExclusive("user-data-dir", "temp-profile")
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
@@ -372,8 +286,7 @@ func runCobra(cmd *cobra.Command, args []string) error {
 
 	if showVersion {
 		fmt.Printf("snag version %s\n", Version)
-		fmt.Println("Repository: https://github.com/p3bot/snag")
-		fmt.Println("Report issues: https://github.com/p3bot/snag/issues/new")
+		fmt.Println("Repository: https://github.com/jacobbello-pg/snaggle")
 		return nil
 	}
 
@@ -381,9 +294,8 @@ func runCobra(cmd *cobra.Command, args []string) error {
 		return handleSkill(cmd, args)
 	}
 
-	if skillLocal {
-		logger.Error("Cannot use --local without --skill-install, --skill-list, or --skill-uninstall")
-		return fmt.Errorf("conflicting flags: --local requires a skill install, list, or uninstall flag")
+	if err := enforceSecondaryScope(cmd, args); err != nil {
+		return err
 	}
 
 	var urls []string
@@ -529,11 +441,11 @@ func runCobra(cmd *cobra.Command, args []string) error {
 		}
 
 		cfg.URL = validatedURL
-		cfg.ForceHeadless = forceHead
-		cfg.OpenBrowser = openBrowser
+		cfg.ForceHeadless = true
+		cfg.OpenBrowser = false
 		cfg.UserAgent = opts.UserAgent
 		cfg.UserDataDir = opts.UserDataDir
-		cfg.TempProfile = opts.TempProfile
+		cfg.TempProfile = true
 
 		logger.Debug("Config: format=%s, timeout=%d, port=%d", cfg.Format, cfg.Timeout, cfg.Port)
 		logger.Verbose("Configuration: format=%s, timeout=%ds, port=%d", cfg.Format, cfg.Timeout, cfg.Port)
@@ -542,4 +454,32 @@ func runCobra(cmd *cobra.Command, args []string) error {
 	}
 
 	return handleMultipleURLs(cmd, urls)
+}
+
+func enforceSecondaryScope(cmd *cobra.Command, args []string) error {
+	disabled := []string{
+		"all-tabs", "doctor", "kill-browser", "list-tabs", "open-browser",
+		"output", "output-dir", "port", "tab", "url-file", "user-agent", "user-data-dir",
+	}
+	for _, name := range disabled {
+		if cmd.Flags().Changed(name) {
+			return fmt.Errorf("--%s is disabled in the secure secondary-tool build", name)
+		}
+	}
+
+	count := 0
+	for _, arg := range args {
+		if strings.TrimSpace(arg) != "" {
+			count++
+		}
+	}
+	if count > 1 {
+		return fmt.Errorf("secure secondary-tool mode accepts exactly one URL")
+	}
+
+	formatName := validate.NormalizeFormat(flagFormat)
+	if formatName == format.PDF || formatName == format.PNG {
+		return fmt.Errorf("binary output formats are disabled in the secure secondary-tool build")
+	}
+	return nil
 }
