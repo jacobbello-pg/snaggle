@@ -7,9 +7,7 @@
 package doctor
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"runtime"
 	"strings"
@@ -157,30 +155,8 @@ func checkPortConnection(port int) *PortStatus {
 }
 
 func checkLatestVersion() string {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	resp, err := client.Get("https://api.github.com/repos/p3bot/snag/releases/latest")
-	if err != nil {
-		return ""
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return ""
-	}
-
-	var release struct {
-		TagName string `json:"tag_name"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return ""
-	}
-
-	version := strings.TrimPrefix(release.TagName, "v")
-	return version
+	// Update checks are intentionally disabled in the secure fork.
+	return ""
 }
 
 func (dr *DoctorReport) String() string {
@@ -188,8 +164,7 @@ func (dr *DoctorReport) String() string {
 
 	buf.WriteString("snag Doctor Report\n")
 	buf.WriteString("==================\n")
-	buf.WriteString("Repository:    https://github.com/p3bot/snag\n")
-	buf.WriteString("Report Issue:  https://github.com/p3bot/snag/issues/new\n")
+	buf.WriteString("Repository:    https://github.com/jacobbello-pg/snaggle\n")
 
 	buf.WriteString(dr.formatSection("Version Information"))
 	buf.WriteString(dr.formatItem("snag version", dr.SnagVersion))

@@ -76,17 +76,10 @@ func linuxStateHome() (string, error) {
 // --user-data-dir. It does not create directories. Empty userDataDir means
 // the XDG/darwin default. tempProfile is a unique temp dir at launch time.
 func ResolveLaunchProfile(userDataDir string, tempProfile bool) (LaunchProfile, error) {
-	if tempProfile {
+	if tempProfile || userDataDir == "" {
 		return LaunchProfile{Ephemeral: true}, nil
 	}
 	path := userDataDir
-	if path == "" {
-		var err error
-		path, err = DefaultLaunchProfile()
-		if err != nil {
-			return LaunchProfile{}, err
-		}
-	}
 	info, err := os.Stat(path)
 	exists := err == nil && info.IsDir()
 	return LaunchProfile{Path: path, Exists: exists}, nil

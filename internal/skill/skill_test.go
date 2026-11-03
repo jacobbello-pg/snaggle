@@ -15,13 +15,13 @@ import (
 
 func TestTextFrontmatterAndH1(t *testing.T) {
 	text := skill.Text()
-	if !strings.HasPrefix(text, "---\nname: snag\n") {
-		t.Fatal("skill must open with Agent Skills frontmatter (name: snag)")
+	if !strings.HasPrefix(text, "---\nname: snaggle\n") {
+		t.Fatal("skill must open with Agent Skills frontmatter (name: snaggle)")
 	}
 	if !strings.Contains(text, "description:") {
 		t.Fatal("skill frontmatter must include description")
 	}
-	if !strings.Contains(text, "\n# Fetch web pages with snag\n") {
+	if !strings.Contains(text, "\n# Use Snaggle as a secondary web fetcher\n") {
 		t.Fatal("skill must have H1 after frontmatter")
 	}
 	if !strings.HasSuffix(text, "\n") {
@@ -32,23 +32,12 @@ func TestTextFrontmatterAndH1(t *testing.T) {
 func TestTextRequiredGuidance(t *testing.T) {
 	text := skill.Text()
 	needles := []string{
-		"snag <url>",
-		"--url-file",
-		"--list-tabs",
-		"--open-browser",
-		"--kill-browser",
-		"--doctor",
-		"--verbose",
-		"--debug",
-		"--wait-for",
-		"--info",
-		"--all-tabs",
-		"PDF/PNG never go to stdout",
-		"## Authenticated Page",
-		"--temp-profile",
-		"--user-data-dir",
-		"singleton",
-		`snag -t "pattern"`,
+		"secondary web fetcher",
+		"ordinary web tool fails",
+		"public-network-only",
+		"ephemeral profile",
+		"Do not use it for authenticated",
+		"snag --timeout 30 --format md https://example.com",
 	}
 	for _, n := range needles {
 		if !strings.Contains(text, n) {

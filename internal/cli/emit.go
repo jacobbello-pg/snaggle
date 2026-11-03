@@ -72,7 +72,8 @@ func newEmitConfig(cmd *cobra.Command, autoDir bool) (*Config, error) {
 		WaitFor:       validate.WaitFor(waitFor, cmd.Flags().Changed("wait-for")),
 		Port:          port,
 		CloseTab:      closeTab,
-		ForceHeadless: forceHead,
+		ForceHeadless: true,
+		TempProfile:   true,
 	}, nil
 }
 

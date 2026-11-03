@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-//go:embed skill.md
+//go:embed SKILL.md
 var embedded string
 
 // Text returns the full agent skill contract as markdown, ready for stdout.

@@ -19,11 +19,12 @@ import (
 )
 
 const (
-	Markdown = "md"
-	HTML     = "html"
-	Text     = "text"
-	PDF      = "pdf"
-	PNG      = "png"
+	Markdown     = "md"
+	HTML         = "html"
+	Text         = "text"
+	PDF          = "pdf"
+	PNG          = "png"
+	MaxHTMLBytes = 8 << 20
 )
 
 // BinaryPage is the page surface needed for PDF and PNG output.
@@ -65,6 +66,9 @@ func Render(page Page, formatName string) ([]byte, error) {
 	html, err := page.HTML()
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract HTML: %w", err)
+	}
+	if len(html) > MaxHTMLBytes {
+		return nil, fmt.Errorf("page HTML exceeds %d-byte safety limit", MaxHTMLBytes)
 	}
 	return cc.Convert(html)
 }

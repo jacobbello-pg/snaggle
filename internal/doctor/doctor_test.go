@@ -519,11 +519,11 @@ func TestCollectDoctorInfo_DefaultPort(t *testing.T) {
 	if report.CustomPortStatus != nil {
 		t.Error("CustomPortStatus should be nil when port is default 9222")
 	}
-	if report.SnagProfileEphemeral {
-		t.Error("default snag profile should not be ephemeral")
+	if !report.SnagProfileEphemeral {
+		t.Error("default snag profile should be ephemeral")
 	}
-	if report.SnagProfilePath == "" {
-		t.Error("SnagProfilePath should be resolved")
+	if report.SnagProfilePath != "" {
+		t.Error("ephemeral snag profile should not expose a persistent path")
 	}
 }
 

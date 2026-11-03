@@ -117,7 +117,7 @@ func (bm *BrowserManager) launchBrowser(ctx context.Context, headless bool) (*ro
 		return nil, err
 	}
 
-	l := withRealUserLaunchFlags(launcher.New().Context(ctx).
+	l := withSecureLaunchFlags(launcher.New().Context(ctx).
 		Bin(path).
 		Leakless(headless), headless)
 
@@ -185,7 +185,7 @@ func (bm *BrowserManager) OpenBrowserOnly(ctx context.Context) error {
 		return err
 	}
 
-	l := withRealUserLaunchFlags(launcher.New().Context(ctx).
+	l := withSecureLaunchFlags(launcher.New().Context(ctx).
 		Bin(path).
 		Leakless(false), false).
 		Set("remote-debugging-port", fmt.Sprintf("%d", bm.port))
@@ -249,12 +249,9 @@ func (bm *BrowserManager) applyLaunchProfile(l *launcher.Launcher) (*launcher.La
 
 	dir := bm.userDataDir
 	if dir == "" {
-		var err error
-		dir, err = DefaultLaunchProfile()
-		if err != nil {
-			return l, fmt.Errorf("failed to resolve launch profile: %w", err)
-		}
-		bm.userDataDir = dir
+		bm.tempProfile = true
+		logger.Verbose("Using ephemeral user data directory")
+		return l, nil
 	}
 
 	created := false
@@ -319,16 +316,18 @@ func (bm *BrowserManager) NewPage() (*Page, error) {
 		return nil, fmt.Errorf("failed to create page: %w", err)
 	}
 
-	if err := applyRealUserPageIdentity(page, bm.browserName); err != nil {
-		logger.Warning("Failed to apply real Chrome identity: %v", err)
-	}
 	if bm.launchedHeadless {
 		if err := applyHeadlessWindowIdentity(page); err != nil {
 			logger.Warning("Failed to apply headless window identity: %v", err)
 		}
 	}
 
-	return wrapPage(page), nil
+	securePage := wrapPage(page)
+	if err := securePage.RestrictNetwork(); err != nil {
+		_ = securePage.Close()
+		return nil, err
+	}
+	return securePage, nil
 }
 
 // connectRod attaches to a CDP endpoint without Rod's default laptop device
@@ -345,13 +344,13 @@ func connectRod(ctx context.Context, controlURL string) (*rod.Browser, error) {
 	return browser.CancelTimeout(), nil
 }
 
-// withRealUserLaunchFlags drops Chromium automation tells so a launched
-// browser presents as a normal desktop Chrome: no --enable-automation,
-// navigator.webdriver reports false, new headless mode, and a real virtual
-// display (--screen-info) instead of CDP device-metrics emulation.
-func withRealUserLaunchFlags(l *launcher.Launcher, headless bool) *launcher.Launcher {
-	l = l.Delete("enable-automation").
-		Set("disable-blink-features", "AutomationControlled")
+// withSecureLaunchFlags preserves Chromium's sandbox and site isolation,
+// binds CDP to loopback, and leaves automation identity visible to websites.
+func withSecureLaunchFlags(l *launcher.Launcher, headless bool) *launcher.Launcher {
+	l = l.NoSandbox(false).
+		Set("remote-debugging-address", "127.0.0.1").
+		Set("disable-features", "TranslateUI").
+		Delete("disable-site-isolation-trials")
 	if headless {
 		return l.HeadlessNew(true).
 			Set("window-size", strconv.Itoa(headlessWindowWidth), strconv.Itoa(headlessWindowHeight)).

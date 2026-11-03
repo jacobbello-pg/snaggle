@@ -15,6 +15,7 @@ import (
 
 	"github.com/p3bot/snag/internal/format"
 	"github.com/p3bot/snag/internal/logger"
+	"github.com/p3bot/snag/internal/netpolicy"
 )
 
 func URL(urlStr string) (string, error) {
@@ -35,27 +36,25 @@ func URL(urlStr string) (string, error) {
 	}
 	logger.Debug("Parsed URL - scheme: %s, host: %s, path: %s", parsedURL.Scheme, parsedURL.Host, parsedURL.Path)
 
-	validSchemes := map[string]bool{
-		"http":  true,
-		"https": true,
-		"file":  true,
-	}
-
-	if !validSchemes[parsedURL.Scheme] {
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		logger.Error("Unsupported URL scheme: %s", parsedURL.Scheme)
 		logger.ErrorWithSuggestion(
-			"URL must use http://, https://, or file://",
+			"URL must use public http:// or https://",
 			"snag https://example.com",
 		)
 		return "", ErrInvalidURL
 	}
 
-	if parsedURL.Scheme != "file" && parsedURL.Host == "" {
+	if parsedURL.Host == "" {
 		logger.Error("Invalid URL: missing host")
 		logger.ErrorWithSuggestion(
 			"URL must include a hostname",
 			"snag https://example.com",
 		)
+		return "", ErrInvalidURL
+	}
+	if err := netpolicy.CheckURLSyntax(urlStr); err != nil {
+		logger.Error("Unsafe URL: %v", err)
 		return "", ErrInvalidURL
 	}
 
@@ -82,10 +81,10 @@ func IsNonFetchableURL(urlStr string) bool {
 }
 
 func Timeout(timeout int) error {
-	if timeout <= 0 {
+	if timeout <= 0 || timeout > 60 {
 		logger.Error("Invalid timeout: %d", timeout)
 		logger.ErrorWithSuggestion(
-			"Timeout must be a positive number of seconds",
+			"Timeout must be between 1 and 60 seconds",
 			"snag <url> --timeout 30",
 		)
 		return fmt.Errorf("invalid timeout: %d", timeout)
@@ -94,7 +93,7 @@ func Timeout(timeout int) error {
 }
 
 func Port(port int) error {
-	if port < 1024 || port > 65535 {
+	if port != 0 && (port < 1024 || port > 65535) {
 		logger.Error("Invalid port: %d", port)
 		logger.ErrorWithSuggestion(
 			"Port must be between 1024 and 65535",

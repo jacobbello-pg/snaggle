@@ -46,6 +46,11 @@ func TestValidateURL_Invalid(t *testing.T) {
 		{"ftp://example.com", "invalid scheme"},
 		{"javascript:alert(1)", "javascript scheme"},
 		{"://example.com", "malformed URL"},
+		{"file:///etc/passwd", "local file"},
+		{"http://127.0.0.1", "loopback"},
+		{"http://192.168.1.1", "private network"},
+		{"http://localhost", "local name"},
+		{"https://user:pass@example.com", "embedded credentials"},
 	}
 
 	for _, tt := range tests {
@@ -152,7 +157,7 @@ func TestNormalizeFormat(t *testing.T) {
 }
 
 func TestValidateTimeout_Valid(t *testing.T) {
-	validTimeouts := []int{1, 30, 60, 120, 3600}
+	validTimeouts := []int{1, 30, 60}
 
 	for _, timeout := range validTimeouts {
 		err := Timeout(timeout)
@@ -163,7 +168,7 @@ func TestValidateTimeout_Valid(t *testing.T) {
 }
 
 func TestValidateTimeout_Invalid(t *testing.T) {
-	invalidTimeouts := []int{-1, 0, -100}
+	invalidTimeouts := []int{-1, 0, -100, 61, 120, 3600}
 
 	for _, timeout := range invalidTimeouts {
 		err := Timeout(timeout)
@@ -174,7 +179,7 @@ func TestValidateTimeout_Invalid(t *testing.T) {
 }
 
 func TestValidatePort_Valid(t *testing.T) {
-	validPorts := []int{1024, 8080, 9222, 65535}
+	validPorts := []int{0, 1024, 8080, 9222, 65535}
 
 	for _, port := range validPorts {
 		err := Port(port)
@@ -185,7 +190,7 @@ func TestValidatePort_Valid(t *testing.T) {
 }
 
 func TestValidatePort_Invalid(t *testing.T) {
-	invalidPorts := []int{-1, 0, 1, 80, 443, 1023, -100, 65536, 99999}
+	invalidPorts := []int{-1, 1, 80, 443, 1023, -100, 65536, 99999}
 
 	for _, port := range invalidPorts {
 		err := Port(port)
