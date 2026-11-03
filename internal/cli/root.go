@@ -67,61 +67,96 @@ func (c *Config) BrowserOptions() browser.BrowserOptions {
 // browserOptionsFromFlags validates profile and user-agent flags, then builds
 // launch options through Config.BrowserOptions so every start path shares one mapping.
 func browserOptionsFromFlags(cmd *cobra.Command, openBrowser, forceHeadless bool) (browser.BrowserOptions, error) {
+	validatedUserAgent := validate.UserAgent(userAgent, cmd.Flags().Changed("user-agent"))
+	if !trustedSession {
+		return browser.BrowserOptions{
+			ForceHeadless: true,
+			UserAgent:     validatedUserAgent,
+			TempProfile:   true,
+		}, nil
+	}
+
+	validatedUserDataDir := ""
+	if !tempProfile && cmd.Flags().Changed("user-data-dir") {
+		validatedDir, err := validate.UserDataDir(userDataDir)
+		if err != nil {
+			return browser.BrowserOptions{}, err
+		}
+		validatedUserDataDir = validatedDir
+	}
+
 	cfg := &Config{
 		Port:          port,
-		ForceHeadless: true,
-		OpenBrowser:   false,
-		TempProfile:   true,
+		ForceHeadless: forceHeadless,
+		OpenBrowser:   openBrowser,
+		UserAgent:     validatedUserAgent,
+		UserDataDir:   validatedUserDataDir,
+		TempProfile:   tempProfile,
 	}
 	return cfg.BrowserOptions(), nil
 }
 
 var (
-	urlFile     string
-	flagOutput  string
-	outputDir   string
-	flagFormat  string
-	timeout     int
-	waitFor     string
-	port        int
-	closeTab    bool
-	forceHead   bool
-	openBrowser bool
-	listTabs    bool
-	tab         string
-	allTabs     bool
-	killBrowser bool
-	runDoctor   bool
-	showVersion bool
-	info        bool
-	verbose     bool
-	debug       bool
-	colorMode   string
-	userAgent   string
-	userDataDir string
-	tempProfile bool
-	skillPrint  bool
+	urlFile        string
+	flagOutput     string
+	outputDir      string
+	flagFormat     string
+	timeout        int
+	waitFor        string
+	port           int
+	closeTab       bool
+	forceHead      bool
+	openBrowser    bool
+	listTabs       bool
+	tab            string
+	allTabs        bool
+	killBrowser    bool
+	runDoctor      bool
+	showVersion    bool
+	info           bool
+	verbose        bool
+	debug          bool
+	colorMode      string
+	userAgent      string
+	userDataDir    string
+	tempProfile    bool
+	trustedSession bool
+	skillPrint     bool
 )
 
 var helpTemplate = fmt.Sprintf(`USAGE:
   snag [options] URL
 
 DESCRIPTION:
-  Secondary, security-scoped Chromium renderer for one public HTTP(S) page.
-  Uses a sandboxed headless browser, ephemeral profile, public-network policy,
-  random loopback CDP port, stdout-only output, and an 8 MiB content limit.
+  Markdown-first Chromium renderer for public HTTP(S) pages. Normal mode uses
+  a sandboxed headless browser, ephemeral profile, public-network policy, and a
+  random loopback CDP port. Browser profiles and existing tabs require the
+  explicit --trusted-session mode.
 
 EXAMPLES:
   snag https://example.com
   snag --format html https://example.com
   snag --format text --timeout 30 https://example.com
   snag --wait-for ".content" https://example.com
+  snag -d pages/ https://example.com https://go.dev
+  snag --format png -o page.png https://example.com
 
 OPTIONS:
-  -f, --format string          Output: md | html | text (default md)
+  -f, --format string          Output: md | html | text | pdf | png (default md)
   -i, --info                   Output page metadata as JSON
-      --timeout int            Timeout in seconds, 1-60 (default %d)
+  -o, --output string          Save output to a file
+  -d, --output-dir string      Save auto-named files to a directory
+      --url-file string        Read URLs from a file or stdin with "-"
+      --timeout int            Page load timeout in seconds (default %d)
   -w, --wait-for string        Wait for a CSS selector
+      --user-agent string      Override the browser user agent
+      --trusted-session        Permit explicit profile and existing-tab access
+  -b, --open-browser           Open a trusted visible browser
+  -l, --list-tabs              List tabs in a trusted browser
+  -t, --tab string             Fetch from a trusted browser tab
+  -a, --all-tabs               Fetch all trusted browser tabs
+      --user-data-dir string   Trusted Chromium profile directory
+  -p, --port int               Trusted browser CDP port (default 9222)
       --skill                  Print the fallback-only agent skill
       --color string           stderr colour: auto | always | never
       --debug                  Enable debug diagnostics
@@ -129,8 +164,9 @@ OPTIONS:
   -h, --help                   Help
   -v, --version                Version
 
-Other upstream options are retained only for argument compatibility and fail
-closed in this secure build.
+Session options fail closed unless --trusted-session is present. Local files,
+private-network destinations, process killing, update checks, and remote skill
+catalogs remain disabled.
 `, DefaultTimeout)
 
 var rootCmd = &cobra.Command{
@@ -154,7 +190,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&tempProfile, "temp-profile", false, "Ephemeral profile for this launch (mutually exclusive with --user-data-dir)")
 
 	rootCmd.Flags().IntVar(&timeout, "timeout", DefaultTimeout, "Page load timeout in seconds")
-	rootCmd.Flags().IntVarP(&port, "port", "p", 0, "Chromium/Chrome remote debugging port (disabled in secure mode)")
+	rootCmd.Flags().IntVarP(&port, "port", "p", 9222, "Trusted Chromium/Chrome remote debugging port")
 
 	rootCmd.Flags().BoolVarP(&closeTab, "close-tab", "c", false, "Close the browser tab after fetching content")
 	rootCmd.Flags().BoolVar(&forceHead, "force-headless", false, "Force headless mode even if the browser is running")
@@ -168,6 +204,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&verbose, "verbose", false, "Enable verbose logging output (connection, fetch, and batch progress)")
 	rootCmd.Flags().BoolVar(&debug, "debug", false, "Enable debug output")
 	rootCmd.Flags().StringVar(&colorMode, "color", logger.ColorAuto, "Colour stderr diagnostics: auto | always | never")
+	rootCmd.Flags().BoolVar(&trustedSession, "trusted-session", false, "Permit explicit profile and existing-tab access")
 
 	rootCmd.Flags().BoolVar(&skillPrint, "skill", false, "Print the embedded agent skill contract")
 
@@ -294,7 +331,7 @@ func runCobra(cmd *cobra.Command, args []string) error {
 		return handleSkill(cmd, args)
 	}
 
-	if err := enforceSecondaryScope(cmd, args); err != nil {
+	if err := enforceTrustBoundary(cmd); err != nil {
 		return err
 	}
 
@@ -441,11 +478,12 @@ func runCobra(cmd *cobra.Command, args []string) error {
 		}
 
 		cfg.URL = validatedURL
-		cfg.ForceHeadless = true
-		cfg.OpenBrowser = false
+		cfg.Port = opts.Port
+		cfg.ForceHeadless = opts.ForceHeadless
+		cfg.OpenBrowser = opts.OpenBrowser
 		cfg.UserAgent = opts.UserAgent
 		cfg.UserDataDir = opts.UserDataDir
-		cfg.TempProfile = true
+		cfg.TempProfile = opts.TempProfile
 
 		logger.Debug("Config: format=%s, timeout=%d, port=%d", cfg.Format, cfg.Timeout, cfg.Port)
 		logger.Verbose("Configuration: format=%s, timeout=%ds, port=%d", cfg.Format, cfg.Timeout, cfg.Port)
@@ -456,30 +494,21 @@ func runCobra(cmd *cobra.Command, args []string) error {
 	return handleMultipleURLs(cmd, urls)
 }
 
-func enforceSecondaryScope(cmd *cobra.Command, args []string) error {
-	disabled := []string{
-		"all-tabs", "doctor", "kill-browser", "list-tabs", "open-browser",
-		"output", "output-dir", "port", "tab", "url-file", "user-agent", "user-data-dir",
+func enforceTrustBoundary(cmd *cobra.Command) error {
+	if killBrowser {
+		return fmt.Errorf("--kill-browser is disabled in Snaggle")
 	}
-	for _, name := range disabled {
+	if trustedSession {
+		return nil
+	}
+	if runDoctor {
+		return nil
+	}
+
+	for _, name := range []string{"all-tabs", "list-tabs", "open-browser", "port", "tab", "user-data-dir"} {
 		if cmd.Flags().Changed(name) {
-			return fmt.Errorf("--%s is disabled in the secure secondary-tool build", name)
+			return fmt.Errorf("--%s requires --trusted-session", name)
 		}
-	}
-
-	count := 0
-	for _, arg := range args {
-		if strings.TrimSpace(arg) != "" {
-			count++
-		}
-	}
-	if count > 1 {
-		return fmt.Errorf("secure secondary-tool mode accepts exactly one URL")
-	}
-
-	formatName := validate.NormalizeFormat(flagFormat)
-	if formatName == format.PDF || formatName == format.PNG {
-		return fmt.Errorf("binary output formats are disabled in the secure secondary-tool build")
 	}
 	return nil
 }

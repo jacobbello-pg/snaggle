@@ -10,10 +10,15 @@ Only the current `main` branch is supported.
 
 ## Security model
 
-Snaggle renders untrusted public pages in an ephemeral, sandboxed Chromium
-process and returns bounded text to an AI workflow. Page output remains
-untrusted and can contain prompt injection.
+Normal mode renders untrusted public pages in an ephemeral, sandboxed Chromium
+process behind a public-network-only proxy. Markdown remains the default, and
+stdout is bounded. Page output remains untrusted and can contain prompt
+injection.
 
-The following are outside the supported boundary: authenticated pages, local or
-private-network targets, persistent profiles, existing browser sessions,
-arbitrary file output, and browser use outside an isolated Chromium process.
+Profiles, visible browsers, fixed CDP ports, and existing browser sessions are
+available only through the explicit `--trusted-session` mode. The embedded
+agent skill requires direct user authorization before using that mode.
+
+Local files, private-network targets, browser process killing, telemetry,
+automatic update checks, and runtime skill catalogs remain outside the
+supported boundary.

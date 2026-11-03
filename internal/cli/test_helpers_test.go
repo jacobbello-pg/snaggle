@@ -13,11 +13,11 @@ import (
 
 func resetCLIFlags() {
 	urlFile, flagOutput, outputDir, flagFormat = "", "", "", "md"
-	timeout, waitFor, port = DefaultTimeout, "", 0
+	timeout, waitFor, port = DefaultTimeout, "", 9222
 	closeTab, forceHead, openBrowser = false, false, false
 	listTabs, allTabs, killBrowser, runDoctor = false, false, false, false
 	tab, userAgent, userDataDir = "", "", ""
-	showVersion, info, verbose, debug, tempProfile, skillPrint = false, false, false, false, false, false
+	showVersion, info, verbose, debug, tempProfile, trustedSession, skillPrint = false, false, false, false, false, false, false
 	colorMode = logger.ColorAuto
 	reset := func(fs *pflag.FlagSet) {
 		fs.VisitAll(func(f *pflag.Flag) { f.Changed = false })

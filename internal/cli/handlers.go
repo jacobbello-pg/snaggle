@@ -479,6 +479,9 @@ func handleMultipleURLs(cmd *cobra.Command, urls []string) error {
 	cfg.UserAgent = opts.UserAgent
 	cfg.UserDataDir = opts.UserDataDir
 	cfg.TempProfile = opts.TempProfile
+	cfg.Port = opts.Port
+	cfg.ForceHeadless = opts.ForceHeadless
+	cfg.OpenBrowser = opts.OpenBrowser
 
 	var validatedURLs []string
 	for _, urlStr := range urls {

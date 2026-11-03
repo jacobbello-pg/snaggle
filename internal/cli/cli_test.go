@@ -619,24 +619,13 @@ func TestCLI_InvalidPort(t *testing.T) {
 
 // TestCLI_FormatOptions checks formats without launching Chrome.
 func TestCLI_FormatOptions(t *testing.T) {
-	tests := []struct {
-		name    string
-		allowed bool
-	}{
-		{"markdown", true}, {"md", true}, {"html", true},
-		{"text", true}, {"txt", true}, {"pdf", false}, {"png", false},
-	}
+	tests := []string{"markdown", "md", "html", "text", "txt", "pdf", "png"}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			stdout, stderr, err := runSnag("--format", tt.name, "http://127.0.0.1")
+	for _, formatName := range tests {
+		t.Run(formatName, func(t *testing.T) {
+			stdout, stderr, err := runSnag("--format", formatName, "http://127.0.0.1")
 			assertError(t, err)
-			output := stdout + stderr
-			if tt.allowed {
-				assertContains(t, output, "non-public")
-			} else {
-				assertContains(t, output, "disabled")
-			}
+			assertContains(t, stdout+stderr, "non-public")
 		})
 	}
 }
@@ -650,7 +639,7 @@ func TestCLI_ListTabsNoBrowser(t *testing.T) {
 	assertExitCode(t, err, 1)
 
 	output := stdout + stderr
-	assertContains(t, output, "--list-tabs is disabled")
+	assertContains(t, output, "--list-tabs requires --trusted-session")
 }
 
 // TestCLI_OutputFilePermission tests output to unwritable location
@@ -1497,20 +1486,20 @@ func TestCLI_TabNoBrowser(t *testing.T) {
 	assertError(t, err)
 	assertExitCode(t, err, 1)
 
-	assertContains(t, stderr, "--tab is disabled")
+	assertContains(t, stderr, "--tab requires --trusted-session")
 
 	_ = stdout
 }
 
 // TestCLI_TabWithURL tests --tab with URL argument (should error)
 func TestCLI_TabWithURL(t *testing.T) {
-	stdout, stderr, err := runSnag("--tab", "1", "https://example.com")
+	stdout, stderr, err := runSnag("--trusted-session", "--tab", "1", "https://example.com")
 
 	// Should fail when both --tab and URL are provided
 	assertError(t, err)
 	assertExitCode(t, err, 1)
 
-	assertContains(t, stderr, "--tab is disabled")
+	assertContains(t, stderr, "Cannot use both --tab and URL arguments")
 
 	_ = stdout
 }
@@ -1871,9 +1860,9 @@ func TestBrowser_OutputDirPDF(t *testing.T) {
 
 // TestCLI_MultipleURLs_FlagOrder tests that Cobra allows flags anywhere (improved UX)
 func TestCLI_MultipleURLs_FlagOrder(t *testing.T) {
-	stdout, stderr, err := runSnag("https://example.com", "-d", t.TempDir())
+	stdout, stderr, err := runSnag("http://127.0.0.1", "-d", t.TempDir())
 	assertError(t, err)
-	assertContains(t, stdout+stderr, "--output-dir is disabled")
+	assertContains(t, stdout+stderr, "non-public")
 }
 
 // TestCLI_MultipleURLs_WithOutput tests error when using --output with multiple URLs
@@ -1885,42 +1874,42 @@ func TestCLI_MultipleURLs_WithOutput(t *testing.T) {
 	assertExitCode(t, err, 1)
 
 	output := stdout + stderr
-	assertContains(t, output, "--output is disabled")
+	assertContains(t, output, "Cannot use --output with multiple")
 
 	_ = stdout
 }
 
 // TestCLI_MultipleURLs_WithCloseTab tests --close-tab works with multiple URLs
 func TestCLI_MultipleURLs_WithCloseTab(t *testing.T) {
-	stdout, stderr, err := runSnag("--close-tab", "https://example.com", "https://go.dev")
+	stdout, stderr, err := runSnag("--close-tab", "http://127.0.0.1", "http://127.0.0.2")
 	assertError(t, err)
-	assertContains(t, stdout+stderr, "exactly one URL")
+	assertContains(t, stdout+stderr, "No valid URLs")
 }
 
 // TestCLI_MultipleURLs_WithTab tests error when using --tab with URL arguments
 func TestCLI_MultipleURLs_WithTab(t *testing.T) {
-	stdout, stderr, err := runSnag("--tab", "1", "https://example.com")
+	stdout, stderr, err := runSnag("--trusted-session", "--tab", "1", "https://example.com")
 
 	// Should fail with conflict error
 	assertError(t, err)
 	assertExitCode(t, err, 1)
 
 	output := stdout + stderr
-	assertContains(t, output, "--tab is disabled")
+	assertContains(t, output, "Cannot use both --tab and URL arguments")
 
 	_ = stdout
 }
 
 // TestCLI_MultipleURLs_WithAllTabs tests error when using --all-tabs with URL arguments
 func TestCLI_MultipleURLs_WithAllTabs(t *testing.T) {
-	stdout, stderr, err := runSnag("--all-tabs", "https://example.com")
+	stdout, stderr, err := runSnag("--trusted-session", "--all-tabs", "https://example.com")
 
 	// Should fail with conflict error
 	assertError(t, err)
 	assertExitCode(t, err, 1)
 
 	output := stdout + stderr
-	assertContains(t, output, "--all-tabs is disabled")
+	assertContains(t, output, "Cannot use both --all-tabs and URL arguments")
 
 	_ = stdout
 }
@@ -1931,7 +1920,7 @@ func TestCLI_MultipleURLs_WithListTabs(t *testing.T) {
 
 	output := stdout + stderr
 	assertError(t, err)
-	assertContains(t, output, "--list-tabs is disabled")
+	assertContains(t, output, "--list-tabs requires --trusted-session")
 
 	_ = stdout
 }
@@ -1945,7 +1934,7 @@ func TestCLI_URLFile_NotFound(t *testing.T) {
 	assertExitCode(t, err, 1)
 
 	output := stdout + stderr
-	assertContains(t, output, "--url-file is disabled")
+	assertContains(t, output, "failed to open URL file")
 
 	_ = stdout
 }
@@ -1967,7 +1956,7 @@ func TestCLI_URLFile_Empty(t *testing.T) {
 	assertExitCode(t, err, 1)
 
 	output := stdout + stderr
-	assertContains(t, output, "--url-file is disabled")
+	assertContains(t, output, "no valid URLs")
 
 	_ = stdout
 }
@@ -1995,7 +1984,7 @@ func TestCLI_URLFile_OnlyComments(t *testing.T) {
 	assertExitCode(t, err, 1)
 
 	output := stdout + stderr
-	assertContains(t, output, "--url-file is disabled")
+	assertContains(t, output, "no valid URLs")
 
 	_ = stdout
 }
@@ -2307,7 +2296,7 @@ func TestCLI_HelpDocumentsEphemeralProfile(t *testing.T) {
 	stdout, stderr, _ := runSnag("--help")
 	output := stdout + stderr
 	assertContains(t, output, "ephemeral profile")
-	assertNotContains(t, output, "--user-data-dir DIRECTORY")
+	assertContains(t, output, "--trusted-session")
 }
 
 func TestCLI_TempProfileUserDataDirMutex(t *testing.T) {
@@ -2321,14 +2310,14 @@ func TestCLI_TempProfileUserDataDirMutex(t *testing.T) {
 
 func TestCLI_DoctorTempProfile(t *testing.T) {
 	stdout, stderr, err := runSnag("--doctor", "--temp-profile")
-	assertError(t, err)
-	assertContains(t, stdout+stderr, "--doctor is disabled")
+	assertNoError(t, err)
+	assertContains(t, stdout+stderr, "snag Doctor Report")
 }
 
 func TestCLI_DoctorUserDataDirFile(t *testing.T) {
 	stdout, stderr, err := runSnag("--doctor", "--user-data-dir", "/etc/hosts")
-	assertError(t, err)
-	assertContains(t, stdout+stderr, "--doctor is disabled")
+	assertNoError(t, err)
+	assertContains(t, stdout+stderr, "snag Doctor Report")
 	info, statErr := os.Stat("/etc/hosts")
 	if statErr != nil {
 		t.Fatal(statErr)
@@ -2343,8 +2332,8 @@ func TestCLI_DoctorDoesNotCreateDefaultProfile(t *testing.T) {
 	home := t.TempDir()
 	env := testEnv(map[string]string{"HOME": home}, "XDG_STATE_HOME")
 	stdout, stderr, err := runSnagCmd(env, "--doctor")
-	assertError(t, err)
-	assertContains(t, stdout+stderr, "--doctor is disabled")
+	assertNoError(t, err)
+	assertContains(t, stdout+stderr, "snag Doctor Report")
 
 	profile := filepath.Join(home, ".local", "state", "snag", "chrome")
 	if runtime.GOOS == "darwin" {

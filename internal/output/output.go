@@ -28,7 +28,7 @@ const (
 	MaxSlugLength   = 80
 	DefaultFileMode = 0644
 	bytesPerKB      = 1024.0
-	MaxOutputBytes  = 8 << 20
+	MaxStdoutBytes  = 8 << 20
 )
 
 func SlugifyTitle(title string, maxLen int) string {
@@ -126,10 +126,10 @@ func ResolveConflict(dir, filename string) (string, error) {
 
 // Write sends data to path, or to stdout when path is empty.
 func Write(data []byte, path string) error {
-	if len(data) > MaxOutputBytes {
-		return fmt.Errorf("output exceeds %d-byte safety limit", MaxOutputBytes)
-	}
 	if path == "" {
+		if len(data) > MaxStdoutBytes {
+			return fmt.Errorf("stdout output exceeds %d-byte safety limit; use --output", MaxStdoutBytes)
+		}
 		return writeStdout(data)
 	}
 	return writeFile(data, path)
