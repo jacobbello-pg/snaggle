@@ -43,6 +43,7 @@ type BrowserManager struct {
 	forceHeadless    bool
 	openBrowser      bool
 	browserName      string
+	egressProxy      *egressProxy
 }
 
 type BrowserOptions struct {
@@ -66,6 +67,12 @@ func NewBrowserManager(opts BrowserOptions) *BrowserManager {
 }
 
 func (bm *BrowserManager) Close() {
+	defer func() {
+		if bm.egressProxy != nil {
+			bm.egressProxy.Close()
+			bm.egressProxy = nil
+		}
+	}()
 	if bm.wasLaunched && bm.launchedHeadless {
 		logger.Verbose("Closing headless browser...")
 		if bm.browser != nil {
@@ -77,6 +84,10 @@ func (bm *BrowserManager) Close() {
 		if bm.launcher != nil {
 			bm.abandonLauncher(bm.launcher)
 		}
+		bm.browser = nil
+		bm.launcher = nil
+		bm.wasLaunched = false
+		bm.launchedHeadless = false
 		return
 	}
 	if bm.wasLaunched {

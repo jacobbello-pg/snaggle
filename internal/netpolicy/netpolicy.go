@@ -20,31 +20,40 @@ type Resolver interface {
 	LookupNetIP(context.Context, string, string) ([]netip.Addr, error)
 }
 
-// CheckURL rejects local files, credentials, local names, and destinations
-// resolving to non-public address space. Every resolved address must be public.
-func CheckURL(ctx context.Context, resolver Resolver, rawURL string) error {
+// ResolveURL validates a URL and returns every public address it resolves to.
+func ResolveURL(ctx context.Context, resolver Resolver, rawURL string) ([]netip.Addr, error) {
 	u, err := checkURLSyntax(rawURL)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
 	if addr, err := netip.ParseAddr(host); err == nil {
-		return checkAddr(addr)
+		if err := checkAddr(addr); err != nil {
+			return nil, err
+		}
+		return []netip.Addr{addr.Unmap()}, nil
 	}
 
 	addrs, err := resolver.LookupNetIP(ctx, "ip", host)
 	if err != nil {
-		return fmt.Errorf("resolve %s: %w", host, err)
+		return nil, fmt.Errorf("resolve %s: %w", host, err)
 	}
 	if len(addrs) == 0 {
-		return fmt.Errorf("resolve %s: no addresses", host)
+		return nil, fmt.Errorf("resolve %s: no addresses", host)
 	}
 	for _, addr := range addrs {
 		if err := checkAddr(addr); err != nil {
-			return fmt.Errorf("destination %s: %w", host, err)
+			return nil, fmt.Errorf("destination %s: %w", host, err)
 		}
 	}
-	return nil
+	return addrs, nil
+}
+
+// CheckURL rejects local files, credentials, local names, and destinations
+// resolving to non-public address space. Every resolved address must be public.
+func CheckURL(ctx context.Context, resolver Resolver, rawURL string) error {
+	_, err := ResolveURL(ctx, resolver, rawURL)
+	return err
 }
 
 // CheckURLSyntax rejects unsafe schemes, embedded credentials, local names,

@@ -6,7 +6,11 @@
 
 package cli
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+)
 
 func TestEnforceSecondaryScope(t *testing.T) {
 	resetCLIFlags()
@@ -30,5 +34,27 @@ func TestEnforceSecondaryScope(t *testing.T) {
 	}
 	if err := enforceSecondaryScope(rootCmd, []string{"https://example.com"}); err == nil {
 		t.Fatal("file output must be rejected")
+	}
+}
+
+func TestSecureCLIChromeIntegration(t *testing.T) {
+	if os.Getenv("SNAG_BROWSER_INTEGRATION") != "1" {
+		t.Skip("set SNAG_BROWSER_INTEGRATION=1 to launch isolated Chromium")
+	}
+
+	stdout, stderr, err := runSnag("--format", "text", "--timeout", "30", "https://example.com")
+	if err != nil {
+		t.Fatalf("public fetch: %v\nstderr=%s", err, stderr)
+	}
+	if !strings.Contains(stdout, "This domain is for use in documentation examples") {
+		t.Fatalf("public fetch missing expected content: %q", stdout)
+	}
+
+	stdout, stderr, err = runSnag("http://127.0.0.1:1")
+	if err == nil {
+		t.Fatalf("private target unexpectedly succeeded: %s", stdout)
+	}
+	if !strings.Contains(stderr, "non-public") {
+		t.Fatalf("private target error = %q", stderr)
 	}
 }

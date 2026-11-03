@@ -13,9 +13,13 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
@@ -524,6 +528,9 @@ func TestWithSecureLaunchFlags_Headless(t *testing.T) {
 	if !strings.Contains(args, "--remote-debugging-address=127.0.0.1") {
 		t.Fatalf("headless launch must bind CDP to loopback: %s", args)
 	}
+	if !strings.Contains(args, "--disable-crash-reporter") {
+		t.Fatalf("headless launch must disable crash reporting: %s", args)
+	}
 }
 
 func TestWithSecureLaunchFlags_Visible(t *testing.T) {
@@ -600,6 +607,9 @@ func TestConnectCanceled(t *testing.T) {
 }
 
 func TestTempProfileHeadlessCloseRemovesDir(t *testing.T) {
+	if os.Getenv("SNAG_BROWSER_INTEGRATION") != "1" {
+		t.Skip("set SNAG_BROWSER_INTEGRATION=1 to launch isolated Chromium")
+	}
 	bm := NewBrowserManager(BrowserOptions{
 		Port:          freePort(t),
 		ForceHeadless: true,
@@ -627,6 +637,104 @@ func TestTempProfileHeadlessCloseRemovesDir(t *testing.T) {
 	bm.Close()
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Fatalf("temp profile still present after Close(): %s (%v)", dir, err)
+	}
+}
+
+func TestSecureBrowserIntegration(t *testing.T) {
+	if os.Getenv("SNAG_BROWSER_INTEGRATION") != "1" {
+		t.Skip("set SNAG_BROWSER_INTEGRATION=1 to launch isolated Chromium")
+	}
+	logger.SetDefault(logger.NewWithWriter(logger.LevelDebug, os.Stderr, false))
+	t.Cleanup(func() {
+		logger.SetDefault(logger.NewWithWriter(logger.LevelQuiet, io.Discard, false))
+	})
+
+	var privateHits atomic.Int32
+	private := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		privateHits.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(private.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	bm := NewBrowserManager(BrowserOptions{Port: 0, ForceHeadless: true, TempProfile: true})
+	if err := bm.Connect(ctx); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	t.Cleanup(bm.Close)
+
+	profile := bm.launcher.Get(flags.UserDataDir)
+	args := strings.Join(bm.launcher.FormatArgs(), " ")
+	if !strings.HasPrefix(profile, os.TempDir()) {
+		t.Fatalf("profile %q is not under %s", profile, os.TempDir())
+	}
+	if strings.Contains(args, "--no-sandbox") {
+		t.Fatalf("sandbox disabled: %s", args)
+	}
+	if !strings.Contains(args, "--remote-debugging-address=127.0.0.1") {
+		t.Fatalf("CDP is not loopback-only: %s", args)
+	}
+
+	page, err := bm.NewPage()
+	if err != nil {
+		bm.Close()
+		t.Fatalf("NewPage: %v", err)
+	}
+	if err := page.NavigateTimeout("https://example.com", 30*time.Second); err != nil {
+		bm.ClosePage(page)
+		bm.Close()
+		t.Fatalf("public navigation: %v", err)
+	}
+	html, err := page.HTML()
+	if err != nil || !strings.Contains(html, "Example Domain") {
+		bm.ClosePage(page)
+		bm.Close()
+		t.Fatalf("public page HTML missing expected content: err=%v", err)
+	}
+
+	result, err := page.rodPage.Eval(`(target) => new Promise((resolve) => {
+		const img = new Image();
+		img.onload = () => resolve("loaded");
+		img.onerror = () => resolve("blocked");
+		img.src = target;
+	})`, private.URL+"/subresource")
+	if err != nil || result.Value.Str() != "blocked" {
+		bm.ClosePage(page)
+		bm.Close()
+		t.Fatalf("private subresource was not blocked: result=%v err=%v", result, err)
+	}
+
+	redirect := "https://httpbin.org/redirect-to?url=" + url.QueryEscape(private.URL+"/redirect")
+	_, _ = page.rodPage.Eval(`(target) => fetch(target).catch(() => null)`, redirect)
+	time.Sleep(500 * time.Millisecond)
+	if got := privateHits.Load(); got != 0 {
+		bm.ClosePage(page)
+		bm.Close()
+		t.Fatalf("private target received %d browser requests", got)
+	}
+	for _, host := range bm.egressProxy.observedHosts(true) {
+		switch host {
+		case "example.com", "httpbin.org":
+		default:
+			bm.ClosePage(page)
+			bm.Close()
+			t.Fatalf("unexpected browser egress host %q", host)
+		}
+	}
+	for _, host := range bm.egressProxy.observedHosts(false) {
+		if isBrowserVendorHost(host) || host == "127.0.0.1" {
+			continue
+		}
+		bm.ClosePage(page)
+		bm.Close()
+		t.Fatalf("unexpected blocked browser host %q", host)
+	}
+
+	bm.ClosePage(page)
+	bm.Close()
+	if _, err := os.Stat(profile); !os.IsNotExist(err) {
+		t.Fatalf("ephemeral profile remains after Close: %s (%v)", profile, err)
 	}
 }
 

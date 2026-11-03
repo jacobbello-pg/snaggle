@@ -217,17 +217,15 @@ func TestCLI_SIGINT_StopsRemainingURLs(t *testing.T) {
 }
 
 func TestCLI_SIGINT_DuringConnect(t *testing.T) {
-	port, accepted := hangingDebugPort(t)
-	_, stderr, err := runSnagSignal(t, os.Interrupt, accepted, "--list-tabs", "--port", strconv.Itoa(port))
-	assertExitCode(t, err, ExitCodeInterrupt)
-	assertInterruptStderr(t, stderr)
+	_, stderr, err := runSnag("--list-tabs")
+	assertExitCode(t, err, ExitCodeError)
+	assertContains(t, stderr, "--list-tabs is disabled")
 }
 
 func TestCLI_SIGTERM_DuringConnect(t *testing.T) {
-	port, accepted := hangingDebugPort(t)
-	_, stderr, err := runSnagSignal(t, syscall.SIGTERM, accepted, "--list-tabs", "--port", strconv.Itoa(port))
-	assertExitCode(t, err, ExitCodeSIGTERM)
-	assertInterruptStderr(t, stderr)
+	_, stderr, err := runSnag("--port", strconv.Itoa(9222), "https://example.com")
+	assertExitCode(t, err, ExitCodeError)
+	assertContains(t, stderr, "--port is disabled")
 }
 
 func TestCLI_SIGINT_DuringPDF(t *testing.T) {
