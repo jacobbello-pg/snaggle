@@ -157,7 +157,7 @@ OPTIONS:
   -a, --all-tabs               Fetch all trusted browser tabs
       --user-data-dir string   Trusted Chromium profile directory
   -p, --port int               Trusted browser CDP port (default 9222)
-      --skill                  Print the fallback-only agent skill
+      --skill                  Print the default-reader agent skill
       --color string           stderr colour: auto | always | never
       --debug                  Enable debug diagnostics
       --verbose                Enable verbose diagnostics

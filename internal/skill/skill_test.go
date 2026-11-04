@@ -21,7 +21,7 @@ func TestTextFrontmatterAndH1(t *testing.T) {
 	if !strings.Contains(text, "description:") {
 		t.Fatal("skill frontmatter must include description")
 	}
-	if !strings.Contains(text, "\n# Use Snaggle as a secondary web fetcher\n") {
+	if !strings.Contains(text, "\n# Use Snaggle as the default page reader\n") {
 		t.Fatal("skill must have H1 after frontmatter")
 	}
 	if !strings.HasSuffix(text, "\n") {
@@ -32,13 +32,14 @@ func TestTextFrontmatterAndH1(t *testing.T) {
 func TestTextRequiredGuidance(t *testing.T) {
 	text := skill.Text()
 	needles := []string{
-		"secondary web fetcher",
-		"ordinary web tool fails",
+		"default reader",
+		"use `snag` first",
+		"save Markdown to a temporary file",
 		"public-network-only",
 		"ephemeral profile",
 		"Do not use it for authenticated",
 		"Do not use `--trusted-session`",
-		"snag --timeout 30 --format md https://example.com",
+		"snag --timeout 30 --format md --output \"$page\" https://example.com",
 	}
 	for _, n := range needles {
 		if !strings.Contains(text, n) {
