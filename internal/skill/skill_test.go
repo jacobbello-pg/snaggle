@@ -37,6 +37,7 @@ func TestTextRequiredGuidance(t *testing.T) {
 		"public-network-only",
 		"ephemeral profile",
 		"Do not use it for authenticated",
+		"Do not use `--trusted-session`",
 		"snag --timeout 30 --format md https://example.com",
 	}
 	for _, n := range needles {

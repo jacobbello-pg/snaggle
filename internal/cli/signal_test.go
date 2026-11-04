@@ -219,13 +219,13 @@ func TestCLI_SIGINT_StopsRemainingURLs(t *testing.T) {
 func TestCLI_SIGINT_DuringConnect(t *testing.T) {
 	_, stderr, err := runSnag("--list-tabs")
 	assertExitCode(t, err, ExitCodeError)
-	assertContains(t, stderr, "--list-tabs is disabled")
+	assertContains(t, stderr, "--list-tabs requires --trusted-session")
 }
 
 func TestCLI_SIGTERM_DuringConnect(t *testing.T) {
 	_, stderr, err := runSnag("--port", strconv.Itoa(9222), "https://example.com")
 	assertExitCode(t, err, ExitCodeError)
-	assertContains(t, stderr, "--port is disabled")
+	assertContains(t, stderr, "--port requires --trusted-session")
 }
 
 func TestCLI_SIGINT_DuringPDF(t *testing.T) {

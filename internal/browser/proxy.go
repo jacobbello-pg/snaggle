@@ -163,10 +163,17 @@ func (p *egressProxy) allowBrowserVendorHost(host string) bool {
 
 func isBrowserVendorHost(host string) bool {
 	host = strings.ToLower(host)
-	for _, suffix := range []string{
-		"google.com", "googleapis.com", "gstatic.com", "googleusercontent.com", "chromium.org",
+	for _, blocked := range []string{
+		"www.google.com",
+		"accounts.google.com",
+		"www.gstatic.com",
+		"clients2.google.com",
+		"clients4.google.com",
+		"update.googleapis.com",
+		"safebrowsing.googleapis.com",
+		"optimizationguide-pa.googleapis.com",
 	} {
-		if host == suffix || strings.HasSuffix(host, "."+suffix) {
+		if host == blocked {
 			return true
 		}
 	}

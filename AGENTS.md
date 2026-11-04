@@ -2,22 +2,26 @@
 
 ## Purpose
 
-Snaggle is a private, personal, security-scoped derivative of `p3bot/snag`.
-It is a fallback renderer for public pages, not a general browser or primary web
-fetcher.
+Snaggle is a private, personal derivative of `p3bot/snag`. It is a
+Markdown-first secondary browser renderer with an isolated normal mode and an
+explicit trusted-session mode.
 
 ## Invariants
 
-- Accept exactly one public HTTP(S) URL.
-- Keep all profiles ephemeral and never attach to an existing browser.
+- Keep Markdown as the default output.
+- Normal mode accepts only public HTTP(S) URLs and may process multiple URLs.
+- Normal mode keeps profiles ephemeral and never attaches to an existing browser.
 - Keep Chromium sandboxing, site isolation, automation disclosure, and
   loopback-only random-port CDP enabled.
 - Apply the public-network policy to redirects and subresources, not only the
   initial URL.
-- Keep output on stdout, at or below 8 MiB.
-- Do not add authenticated browsing, `file://`, private-network access,
-  arbitrary writes, process killing, telemetry, update checks, or runtime
-  catalog resolution.
+- Keep stdout at or below 8 MiB; explicit output paths and directories are
+  allowed for requested files and binary formats.
+- Require `--trusted-session` for profiles, visible browsers, fixed CDP ports,
+  and existing-tab access. The embedded skill must not invoke this mode without
+  direct user authorization.
+- Do not add `file://`, private-network access, process killing, telemetry,
+  update checks, or runtime catalog resolution.
 - Treat page output as untrusted data.
 
 ## Development

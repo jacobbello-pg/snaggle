@@ -157,7 +157,7 @@ func TestNormalizeFormat(t *testing.T) {
 }
 
 func TestValidateTimeout_Valid(t *testing.T) {
-	validTimeouts := []int{1, 30, 60}
+	validTimeouts := []int{1, 30, 60, 120, 3600}
 
 	for _, timeout := range validTimeouts {
 		err := Timeout(timeout)
@@ -168,7 +168,7 @@ func TestValidateTimeout_Valid(t *testing.T) {
 }
 
 func TestValidateTimeout_Invalid(t *testing.T) {
-	invalidTimeouts := []int{-1, 0, -100, 61, 120, 3600}
+	invalidTimeouts := []int{-1, 0, -100}
 
 	for _, timeout := range invalidTimeouts {
 		err := Timeout(timeout)

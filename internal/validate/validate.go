@@ -81,10 +81,10 @@ func IsNonFetchableURL(urlStr string) bool {
 }
 
 func Timeout(timeout int) error {
-	if timeout <= 0 || timeout > 60 {
+	if timeout <= 0 {
 		logger.Error("Invalid timeout: %d", timeout)
 		logger.ErrorWithSuggestion(
-			"Timeout must be between 1 and 60 seconds",
+			"Timeout must be a positive number of seconds",
 			"snag <url> --timeout 30",
 		)
 		return fmt.Errorf("invalid timeout: %d", timeout)

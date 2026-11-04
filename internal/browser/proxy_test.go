@@ -62,9 +62,15 @@ func TestEgressProxyBlocksPrivateConnect(t *testing.T) {
 
 func TestEgressProxyBlocksBrowserVendorBackground(t *testing.T) {
 	proxy := &egressProxy{}
+	if proxy.allowBrowserVendorHost("www.google.com") {
+		t.Fatal("Chrome startup vendor host was allowed")
+	}
 	proxy.setPrimaryURL("https://example.com")
 	if proxy.allowBrowserVendorHost("www.google.com") {
-		t.Fatal("Chrome vendor background host was allowed")
+		t.Fatal("Chrome vendor background host was allowed after navigation")
+	}
+	if !proxy.allowBrowserVendorHost("fonts.googleapis.com") {
+		t.Fatal("ordinary public page subresource was blocked")
 	}
 	proxy.setPrimaryURL("https://google.com")
 	if !proxy.allowBrowserVendorHost("www.google.com") {
