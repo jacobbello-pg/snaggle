@@ -4,9 +4,9 @@ A private, personal derivative of [p3bot/snag](https://github.com/p3bot/snag).
 It renders JavaScript-heavy pages with Chromium and emits token-efficient
 Markdown by default, plus HTML, text, PDF, or PNG when requested.
 
-Snaggle is a secondary tool. Use ordinary HTTP or search tools first when they
-return complete content; use Snaggle when browser rendering or its output
-formats are useful.
+Snaggle's embedded agent skill uses ordinary search tools for URL discovery and
+Snaggle as the default reader for direct public pages. It saves Markdown to a
+temporary file so agents can load only relevant sections into context.
 
 ## Features
 
