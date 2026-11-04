@@ -1,0 +1,46 @@
+name: PR Quality
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Validate GitHub Actions workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+
+  pr-metadata:
+    name: PR title + non-empty
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate pull request metadata
+        env:
+          ADDITIONS: ${{ github.event.pull_request.additions }}
+          CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
+          DELETIONS: ${{ github.event.pull_request.deletions }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          title_pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?: .+'
+          if [[ ! "${PR_TITLE}" =~ ${title_pattern} ]]; then
+            echo "::error::Use a Conventional Commits PR title, for example: ci: add required PR checks"
+            exit 1
+          fi
+          if [ "${CHANGED_FILES}" -eq 0 ] || { [ "${ADDITIONS}" -eq 0 ] && [ "${DELETIONS}" -eq 0 ]; }; then
+            echo "::error::Pull request has no changes"
+            exit 1
+          fi
